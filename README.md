@@ -31,32 +31,48 @@ README/Makefile.openstep for that whole story).
   actually closes).
 - `make check-objc`, `make lint`.
 
-**Confirmed on real OPENSTEP 4.2 hardware**:
-- The app builds and links.
+**Confirmed on real OPENSTEP 4.2 hardware**: the app builds, links, launches from both `open` and a
+Workspace double-click, and runs a fully usable interactive shell (typing, `ls`, `vi`, `emacs`,
+arrow keys, all confirmed). Getting there took several rounds of real-hardware-only fixes, none of
+which host testing alone could have caught (the host uses entirely different pty/process-management
+APIs, and stubs out the actual PostScript text-drawing calls -- see below):
+
 - Classic BSD pty allocation (`/dev/pty<letter><hexdigit>` master + matching
   `/dev/tty<letter><hexdigit>` slave) works as `open_master_pty()`'s `#ifdef OPENSTEP` branch
   expects.
-- `setsid()` and `waitpid()` are declared by the headers but are **not actually linkable symbols**
-  on this system -- genuinely absent, not just undeclared, real POSIX.1-1988 additions this
-  BSD-4.3-heritage system predates implementing. Replaced with the classic BSD equivalents:
-  `setpgrp(pid, pgrp)` (old 2-arg form) + `TIOCNOTTY` on `/dev/tty` instead of `setsid()`, and
-  `wait3()` (which, unlike `waitpid()`, can only reap "the next available child" -- handled with a
-  shared reap-cache in `app/PTYSession.m` so multiple simultaneous windows each get their own
-  child's exit status correctly) instead of `waitpid()`.
+- `setsid()`, `waitpid()`, `tcgetattr()`/`tcsetattr()`, and `putenv()` are all declared by the
+  headers but **not actually linkable symbols** on this system -- genuinely absent, not just
+  undeclared, real POSIX.1-1988-and-later additions this BSD-4.3-heritage system predates
+  implementing. Replaced with what it actually has instead: `setpgrp(pid, pgrp)` (old 2-arg form) +
+  `TIOCNOTTY` on `/dev/tty` instead of `setsid()`; `wait3()` (which, unlike `waitpid()`, can only
+  reap "the next available child" -- handled with a shared reap-cache in `app/PTYSession.m` so
+  multiple simultaneous windows each get their own child's exit status correctly) instead of
+  `waitpid()`; the older BSD `sgtty` ioctl interface (`TIOCGETP`/`TIOCSETP`, `struct sgttyb`,
+  `CRMOD`) instead of termios; and extending the `environ` global directly, by hand, instead of
+  `putenv()`.
 - The pty's winsize must be pushed explicitly at startup (from the child, on the slave fd, before
   `exec`) -- it is not implicitly correct from a window built at the "default" size, since nothing
   had ever changed to trigger the resize path. Without this, anything sizing its output off
   `TIOCGWINSZ` (`ls`'s multi-column layout, most visibly) came out garbled.
+- The pty's `CRMOD` flag (sgtty's combined equivalent of termios's `ICRNL`/`ONLCR`) must also be
+  set explicitly, for the same reason -- without it, `vt.c`'s spec-correct VT100 handling of a bare
+  LF (moves the cursor down a row, but not to column 0; only CR does that) meant output looked
+  readable but "staggered," each line starting one column further right than the last.
 - Workspace Manager (both `open` and a double-click) silently refuses to launch an app bundle that
   lacks a `__ICON` Mach-O segment -- the exact same failure StepSSH hit before it got its own icon
-  (see StepSSH's own history). `app/StepTTY.iconheader` + `app/StepTTY.tiff`, linked in via
-  `Makefile.openstep`'s `ICONFLAGS`, fix this; **not yet confirmed** this actually resolves the
-  launch failure on real hardware (the fix mirrors StepSSH's proven one exactly, but hasn't been
-  tested on real hardware yet).
+  (see StepSSH's own history). Fixed the same way: `app/StepTTY.iconheader` + `app/StepTTY.tiff`,
+  linked in via `Makefile.openstep`'s `ICONFLAGS`.
+- `$TERM` must be set explicitly (the child otherwise just inherits Workspace Manager's own,
+  essentially empty, environment) -- and specifically to `vt100`, not `xterm`. `xterm` is what
+  StepSSH's own SSH `pty-req` correctly uses for *remote* sessions (a modern remote server's
+  terminfo database is basically guaranteed complete), but OPENSTEP's own, much older, *local*
+  termcap database turned out not to have a working `xterm` entry for cursor keys specifically --
+  confirmed by comparison against OPENSTEP's own native Terminal.app, which already works and uses
+  `vt100`, the universal baseline every Unix termcap has had correctly since the 1980s.
 
-Also marked `[V]` in `app/PTYSession.m` (verify on OPENSTEP): whether `TIOCSCTTY` exists there for
-the child to acquire a controlling terminal (should be moot in practice -- the classic BSD
-open()-acquires-ctty convention already used instead, see above).
+`pkg` and `dist` are confirmed working on real hardware too, built on the same
+`Installer.app/package` mechanics StepSSH's own packaging saga worked out. The fat
+(i386+m68k+sparc) equivalents haven't been run on real hardware yet.
 
 ## Building
 
@@ -78,8 +94,7 @@ make -f Makefile.openstep pkg-fat      # StepTTY.pkg with the fat build
 make -f Makefile.openstep dist-fat     # fat StepTTY.pkg, gzipped as StepTTY-<VERSION>-NIS.tar.gz
 ```
 
-None of `install`/`pkg`/`dist`/`fat` (or their fat variants) have been run on real hardware yet --
-see `Makefile.openstep`'s own comments for exactly what each one assumes and why, carried over
+See `Makefile.openstep`'s own comments for exactly what each one assumes and why, carried over
 directly from what StepSSH's own packaging saga established (the real `Installer.app/package`
 tool, the plain-text `.info` format, `LongFileNames NO`, `chgrp nogroup`, the `N`/`I`/`S`/`NIS`
 `dist` naming) rather than re-derived from nothing.

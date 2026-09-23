@@ -21,7 +21,7 @@ ARCHS    =                        # e.g. -arch i386 -arch m68k -arch sparc; see 
 CFLAGS   = $(OPT) -Wall $(DEFS) $(ARCHS) -Iterm -Iapp
 LIBS     = -framework AppKit -framework Foundation
 APP      = StepTTY.app
-VERSION  = 0.0.1
+VERSION  = 0.1.0
 
 # Workspace takes an application's icon (and its file-type table) from a read-only __ICON segment
 # linked into the executable, not from a file in the .app folder (compare /NextApps/Edit.app, whose
