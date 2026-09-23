@@ -13,9 +13,10 @@ Opens a window running a real login shell (`$SHELL`, or `/bin/csh` if that's uns
 pseudo-terminal, the traditional `Terminal.app` role. "New Window" (Cmd-N) opens another; each
 window is independent. There is no in-window tab UI yet -- multiple windows is where this starts.
 
-**Not yet built:** an application icon, `.pkg` packaging, a `make install`-friendly release
-workflow, anything StepSSH's own packaging saga worked out (see its README/Makefile.openstep for
-that whole story) -- StepTTY hasn't needed any of it yet, being this early.
+**Not yet built:** an application icon. `install`/`pkg`/`dist` and their fat (i386+m68k+sparc)
+equivalents are all in `Makefile.openstep` now, built directly on the lessons StepSSH's own
+packaging saga worked out the hard way (see its README/Makefile.openstep for that whole story) --
+not yet confirmed on real hardware, but not guessed at from scratch either.
 
 ## What was verified, and what was not
 
@@ -62,10 +63,22 @@ make lint check-objc     # style/portability checks
 ```
 
 ```sh
-make -f Makefile.openstep test     # FIRST: the C core on the real compiler
-make -f Makefile.openstep          # builds StepTTY.app
-make -f Makefile.openstep install  # into /LocalApps (see Makefile.openstep; UNVERIFIED)
+make -f Makefile.openstep test         # FIRST: the C core on the real compiler
+make -f Makefile.openstep              # builds StepTTY.app
+make -f Makefile.openstep install      # into /LocalApps
+make -f Makefile.openstep pkg          # StepTTY.pkg for Installer.app
+make -f Makefile.openstep dist         # StepTTY.pkg, gzipped as StepTTY-<VERSION>-<letter>.tar.gz
+make -f Makefile.openstep fat          # StepTTY.app as an i386+m68k+sparc fat binary
+make -f Makefile.openstep install-fat  # fat app into /LocalApps
+make -f Makefile.openstep pkg-fat      # StepTTY.pkg with the fat build
+make -f Makefile.openstep dist-fat     # fat StepTTY.pkg, gzipped as StepTTY-<VERSION>-NIS.tar.gz
 ```
+
+None of `install`/`pkg`/`dist`/`fat` (or their fat variants) have been run on real hardware yet --
+see `Makefile.openstep`'s own comments for exactly what each one assumes and why, carried over
+directly from what StepSSH's own packaging saga established (the real `Installer.app/package`
+tool, the plain-text `.info` format, `LongFileNames NO`, `chgrp nogroup`, the `N`/`I`/`S`/`NIS`
+`dist` naming) rather than re-derived from nothing.
 
 ## Architecture notes
 
