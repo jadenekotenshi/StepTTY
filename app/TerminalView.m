@@ -382,6 +382,14 @@ static unsigned cell_key(const vt_cell *c, int invert, int reverse_screen,
     if (!chars || [chars length] == 0) return;
     c = [chars characterAtIndex:0];
 
+    /* Unconditional (unlike the "unrecognized key" trace further down): diagnosing exactly what a
+     * real keypress delivers -- e.g. whether an arrow key really does arrive as the documented
+     * two-event ESC-then-bare-letter NeXT quirk this file's escPending logic assumes, or as a
+     * single event whose first char doesn't match KEYCH_UP/etc after all -- needs to see every
+     * keyDown, not just ones nothing else already explains. Enable with: touch ~/.StepTTY.trace */
+    SSTrace("keyDown: first char U+%04X (%d chars total), modifierFlags 0x%x, escPending=%d",
+            (unsigned)c, (int)[chars length], flags, (int)escPending);
+
     /* A held-back ESC (see below) is resolved by whatever key comes next, before anything else
      * about this keyDown is interpreted. */
     if (escPending) {
