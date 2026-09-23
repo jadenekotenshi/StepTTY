@@ -355,8 +355,25 @@ static int reap_specific_child(int pid, int *status_out)
          * cursor-key handling) had nothing sensible to look up. "xterm" is not a guess: it is the
          * exact terminal type StepSSH's own pty-req already sends for real SSH sessions using this
          * same vt.c (see app/SSHSession.m), so it is already proven to match what this emulator
-         * actually implements. */
-        putenv("TERM=xterm");
+         * actually implements.
+         *
+         * putenv() itself turned out not to be a real, linkable symbol here -- the same class of
+         * gap as setsid()/waitpid()/tcgetattr()/tcsetattr() (declared by the headers, genuinely
+         * absent from the real libc). Rather than chase yet another libc convenience wrapper that
+         * might not exist either, this reaches for the one thing under it that must: execl() (and
+         * every exec variant except execve) builds the new process's environment straight from the
+         * current process's own `environ` global, so extending that array directly, by hand, gets
+         * $TERM there without needing any "set an env var" library call to exist at all. */
+        {
+            extern char **environ;
+            static char term_var[] = "TERM=xterm";
+            static char *new_environ[64];
+            int i = 0;
+            while (environ[i] && i < 62) { new_environ[i] = environ[i]; i++; }
+            new_environ[i++] = term_var;
+            new_environ[i] = (char *)0;
+            environ = new_environ;
+        }
         shell = getenv("SHELL");
         if (!shell || !*shell) shell = "/bin/csh";           /* OPENSTEP's traditional default shell */
         base = strrchr(shell, '/');
