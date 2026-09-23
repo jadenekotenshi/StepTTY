@@ -70,9 +70,9 @@ APIs, and stubs out the actual PostScript text-drawing calls -- see below):
   confirmed by comparison against OPENSTEP's own native Terminal.app, which already works and uses
   `vt100`, the universal baseline every Unix termcap has had correctly since the 1980s.
 
-`pkg` and `dist` are confirmed working on real hardware too, built on the same
-`Installer.app/package` mechanics StepSSH's own packaging saga worked out. The fat
-(i386+m68k+sparc) equivalents haven't been run on real hardware yet.
+`pkg`, `dist`, and their fat (i386+m68k+sparc) equivalents `install-fat`/`pkg-fat`/`dist-fat` are
+all confirmed working on real hardware, built on the same `Installer.app/package` mechanics
+StepSSH's own packaging saga worked out.
 
 ## Building
 
