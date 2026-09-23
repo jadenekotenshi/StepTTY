@@ -443,6 +443,10 @@ static unsigned cell_key(const vt_cell *c, int invert, int reverse_screen,
     }
     if (key) {
         n = vt_encode_key(term, key, mods, out);
+        SSTrace("keyDown: key=%d mods=%d app_cursor=%d -> n=%d bytes=%02X %02X %02X %02X delegate=%p",
+                key, mods, term->app_cursor, n,
+                n > 0 ? out[0] : 0, n > 1 ? out[1] : 0, n > 2 ? out[2] : 0, n > 3 ? out[3] : 0,
+                (void *)delegate);
         if (n) [delegate terminalView:self sendBytes:out length:n];
         return;
     }
