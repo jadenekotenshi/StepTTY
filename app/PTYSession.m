@@ -24,7 +24,14 @@
 #undef _NEXT_SOURCE
 #undef _POSIX_SOURCE
 #include <sys/ioctl.h>
+/* <termios.h>'s ONLCR (used below) is gated behind _NEXT_SOURCE too (confirmed by reading the real
+ * header, not guessed): OPOST and struct termios/tcgetattr/tcsetattr/TCSANOW are all unconditional,
+ * but ONLCR itself sits in the same "#if defined(_NEXT_SOURCE)" block as the delay/case-conversion
+ * flags this file has no use for. Same discipline, same narrow scoping, as the _NEXT_SOURCE/
+ * _POSIX_SOURCE dance around <sys/wait.h> above. */
+#define _NEXT_SOURCE 1
 #include <termios.h>
+#undef _NEXT_SOURCE
 
 #ifndef O_NONBLOCK
 #define O_NONBLOCK O_NDELAY
