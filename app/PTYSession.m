@@ -349,6 +349,14 @@ static int reap_specific_child(int pid, int *status_out)
         dup2(slaveFD, 0); dup2(slaveFD, 1); dup2(slaveFD, 2);
         if (slaveFD > 2) close(slaveFD);
 
+        /* Never set before -- the child just inherited whatever $TERM happened to be in Workspace
+         * Manager's own environment (almost certainly unset), so anything that consults termcap to
+         * know what escape sequences this terminal understands (tset during .login, clear(1), vi's
+         * cursor-key handling) had nothing sensible to look up. "xterm" is not a guess: it is the
+         * exact terminal type StepSSH's own pty-req already sends for real SSH sessions using this
+         * same vt.c (see app/SSHSession.m), so it is already proven to match what this emulator
+         * actually implements. */
+        putenv("TERM=xterm");
         shell = getenv("SHELL");
         if (!shell || !*shell) shell = "/bin/csh";           /* OPENSTEP's traditional default shell */
         base = strrchr(shell, '/');

@@ -82,6 +82,12 @@ int main(void)
     [s terminalView:tv sendBytes:(const unsigned char *)"echo SMOKE_$((3*4))\r" length:20];
     EXPECT(wait_for(tv, @"SMOKE_12", 10), "a typed command runs in the real shell and its output reaches the screen");
 
+    /* $TERM must reach the shell as "xterm" -- the same terminal type StepSSH's own pty-req sends
+     * for this identical vt.c, so anything that consults termcap (tset during login, clear(1),
+     * vi's cursor keys) has something to look up that actually matches what this emulator does. */
+    [s terminalView:tv sendBytes:(const unsigned char *)"echo TERM_IS_$TERM\r" length:19];
+    EXPECT(wait_for(tv, @"TERM_IS_xterm", 10), "TERM=xterm reaches the shell environment");
+
     /* A bare LF (no CR) written by the child must still land at column 0 of the next row -- the
      * pty's own line discipline (ONLCR) is responsible for that translation, not vt.c (which
      * treats LF and CR as independent, correct VT100 behaviour), so this only works if the pty was
