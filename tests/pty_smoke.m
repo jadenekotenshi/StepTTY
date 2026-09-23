@@ -82,6 +82,20 @@ int main(void)
     [s terminalView:tv sendBytes:(const unsigned char *)"echo SMOKE_$((3*4))\r" length:20];
     EXPECT(wait_for(tv, @"SMOKE_12", 10), "a typed command runs in the real shell and its output reaches the screen");
 
+    /* A bare LF (no CR) written by the child must still land at column 0 of the next row -- the
+     * pty's own line discipline (ONLCR) is responsible for that translation, not vt.c (which
+     * treats LF and CR as independent, correct VT100 behaviour), so this only works if the pty was
+     * actually configured for it rather than relying on whatever the OS defaults a fresh slave to.
+     * -selectedText preserves each row's leading columns verbatim (only trailing blanks are
+     * trimmed), so a staggered ALIGN_B (landing at some column > 0 instead of 0) would show up as
+     * leading spaces before it rather than immediately after the '\n' -- catching the bug through
+     * plain string matching without needing to poke at vt's cursor state directly (which the
+     * shell's own next prompt, printed right after, would contaminate anyway). */
+    [s terminalView:tv sendBytes:(const unsigned char *)"printf 'ALIGN_A\\nALIGN_B\\nALIGN_C\\n'\r" length:38];
+    EXPECT(wait_for(tv, @"ALIGN_C", 10), "bare-LF output reaches the screen");
+    EXPECT([screen_text(tv) rangeOfString:@"\nALIGN_B"].length > 0,
+           "bare LF from the child returns the cursor to column 0 (ONLCR), not just down a row");
+
     /* a burst bigger than one pty read/write, to exercise the pending-write path a little */
     [s terminalView:tv sendBytes:(const unsigned char *)"seq 1 2000\r" length:11];
     EXPECT(wait_for(tv, @"2000", 15), "a burst of output (2000 lines) is received");

@@ -24,6 +24,7 @@
 #undef _NEXT_SOURCE
 #undef _POSIX_SOURCE
 #include <sys/ioctl.h>
+#include <termios.h>
 
 #ifndef O_NONBLOCK
 #define O_NONBLOCK O_NDELAY
@@ -301,6 +302,23 @@ static int reap_specific_child(int pid, int *status_out)
             ws.ws_col = (unsigned short)initCols;
             ws.ws_row = (unsigned short)initRows;
             ioctl(slaveFD, TIOCSWINSZ, &ws);
+        }
+        /* A bare LF only moves the cursor down a row in vt.c (see its own newline_mode, off by
+         * default -- correct VT100 behaviour: LF and CR are independent, and a real terminal
+         * relies on the pty's own line discipline to translate an application's bare '\n' into
+         * "\r\n" before it ever reaches the emulator). Never explicitly configured before, so this
+         * only worked by accident of whatever the OS defaults a fresh pty slave to -- apparently
+         * ON for posix_openpt() on the host (this exact bug never showed up there), but OFF for
+         * OPENSTEP's own classic BSD pty (confirmed on real hardware: readable but "staggered",
+         * each line starting one column further right than the last -- exactly what a working LF
+         * with no CR looks like). Set explicitly rather than trusted implicitly, on both platforms,
+         * so this can't silently depend on a default again. */
+        {
+            struct termios t;
+            if (tcgetattr(slaveFD, &t) == 0) {
+                t.c_oflag |= OPOST | ONLCR;
+                tcsetattr(slaveFD, TCSANOW, &t);
+            }
         }
         close(masterFD);
         dup2(slaveFD, 0); dup2(slaveFD, 1); dup2(slaveFD, 2);
