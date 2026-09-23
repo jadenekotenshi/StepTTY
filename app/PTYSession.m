@@ -21,21 +21,24 @@
 #define _POSIX_SOURCE 1
 #define _NEXT_SOURCE 1
 #include <sys/wait.h>
-#undef _POSIX_SOURCE
-/* _NEXT_SOURCE stays defined a bit longer than _POSIX_SOURCE above: <sys/ioctl.h> below #imports
- * <sys/termios.h> itself (confirmed by reading the real header, not guessed: ioctl.h line 324 is
- * literally "#import <sys/termios.h>"), and #import -- unlike #include -- processes a file AT MOST
- * ONCE per translation unit, full stop, regardless of what macros a LATER #include/#import of the
- * same file sets. ONLCR (used below) sits behind "#if defined(_NEXT_SOURCE)" inside
- * <sys/termios.h>; if <sys/ioctl.h>'s transitive #import processed that file FIRST, before
- * _NEXT_SOURCE was defined, then this file's own later #include <termios.h> -- even with
- * _NEXT_SOURCE freshly defined right before it -- would be a silent no-op, and ONLCR would still
- * end up undeclared (exactly what happened when _NEXT_SOURCE was scoped to only the second
- * #include). Keeping it defined across both includes guarantees whichever one actually triggers
- * <sys/termios.h>'s first (and only) processing sees it. */
-#include <sys/ioctl.h>
-#include <termios.h>
 #undef _NEXT_SOURCE
+#undef _POSIX_SOURCE
+#include <sys/ioctl.h>
+/* POSIX termios (tcgetattr/tcsetattr) postdates OPENSTEP 4.2: its <termios.h> declares them (no
+ * compile error -- and ONLCR itself, once <termios.h> is coaxed into declaring it at all, needs
+ * yet another _NEXT_SOURCE dance, both confirmed the hard way) but the real hardware linker
+ * reports both as undefined symbols: genuinely unimplemented, not just undeclared -- the exact
+ * same class of gap as setsid()/waitpid() in oscompat.h, and StepSSH's tools/clicommon.c hit this
+ * identical wall already. What a 4.3BSD-derived system like this genuinely has instead is the much
+ * older "sgtty" ioctl interface (TIOCGETP/TIOCSETP, struct sgttyb, both declared unconditionally
+ * in <sys/ioctl.h> -- confirmed by reading the real header, no further gating needed) that termios
+ * was later built to replace; CRMOD is that era's single combined flag for what POSIX later split
+ * into ICRNL (input) and ONLCR (output). */
+#ifdef OPENSTEP
+#include <sgtty.h>
+#else
+#include <termios.h>
+#endif
 
 #ifndef O_NONBLOCK
 #define O_NONBLOCK O_NDELAY
@@ -323,7 +326,17 @@ static int reap_specific_child(int pid, int *status_out)
          * OPENSTEP's own classic BSD pty (confirmed on real hardware: readable but "staggered",
          * each line starting one column further right than the last -- exactly what a working LF
          * with no CR looks like). Set explicitly rather than trusted implicitly, on both platforms,
-         * so this can't silently depend on a default again. */
+         * so this can't silently depend on a default again. OPENSTEP uses the old sgtty CRMOD flag
+         * instead of termios's OPOST|ONLCR -- see this file's own #include block above for why. */
+#ifdef OPENSTEP
+        {
+            struct sgttyb t;
+            if (ioctl(slaveFD, TIOCGETP, &t) == 0) {
+                t.sg_flags |= CRMOD;
+                ioctl(slaveFD, TIOCSETP, &t);
+            }
+        }
+#else
         {
             struct termios t;
             if (tcgetattr(slaveFD, &t) == 0) {
@@ -331,6 +344,7 @@ static int reap_specific_child(int pid, int *status_out)
                 tcsetattr(slaveFD, TCSANOW, &t);
             }
         }
+#endif
         close(masterFD);
         dup2(slaveFD, 0); dup2(slaveFD, 1); dup2(slaveFD, 2);
         if (slaveFD > 2) close(slaveFD);
