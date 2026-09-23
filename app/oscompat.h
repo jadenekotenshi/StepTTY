@@ -21,12 +21,11 @@ typedef int pid_t;
  * included -- all genuinely int-returning (or, for open/execl/fcntl/ioctl, taking a varying
  * argument list old-style unprototyped declarations sidestep rather than getting wrong), so the
  * usual implicit-int assumption these warnings describe is harmless; declared anyway for a clean
- * build, same as StepSSH's own oscompat.h does for this exact class of gap. waitpid() is NOT
- * declared here yet -- see this header's own note further down about why. */
+ * build, same as StepSSH's own oscompat.h does for this exact class of gap. */
 extern int open();                                  /* varying arg count (2 or 3, with O_CREAT) */
 extern int fork(void);
 extern int close(int fd);
-extern int setsid(void);
+extern int getpid(void);
 extern int dup2(int oldfd, int newfd);
 extern int execl();                                  /* NULL-terminated varargs */
 extern int fcntl();                                  /* third arg's type varies by cmd */
@@ -35,13 +34,16 @@ extern int kill(int pid, int sig);
 extern int write(int fd, const void *buf, int n);
 extern int ioctl();                                  /* third arg's type varies by request */
 
-/* waitpid()/WIFEXITED()/WIFSIGNALED() itself: real hardware shows WIFEXITED/WIFSIGNALED already
- * exist as macros here, but ones that access member fields (seen: "w_S"/"w_T") on their argument
- * -- the classic pre-POSIX BSD `union wait` convention, not a plain int, and unlike everything
- * above, guessing the exact member layout wrong here would not just be noisy but actually wrong.
- * Not fixed yet: waiting on the real <sys/wait.h> before declaring anything, the same discipline
- * StepSSH's own oscompat.h used for every gap like this (read the real header, don't guess a
- * struct/union's internal shape). */
+/* setsid()/waitpid() *declared* fine (once pid_t existed -- see above) but real hardware's own
+ * linker reports both as undefined symbols: genuinely absent, not just undeclared, on this old a
+ * BSD-heritage system -- POSIX.1-1988 additions OPENSTEP 4.2 predates actually implementing, even
+ * though its headers preemptively declare them. The older BSD equivalents this system does have
+ * (confirmed absent from a real /usr/shlib/*.shlib symbol search for the POSIX names first, not
+ * guessed): setpgrp()+TIOCNOTTY instead of setsid() (see PTYSession.m's own use of both), and
+ * wait3() instead of waitpid() (see PTYSession.m's reap_pending()/reap_specific_child() -- not
+ * declared here since its signature needs `union wait`, from the SAME _NEXT_SOURCE-gated part of
+ * <sys/wait.h> as wait3() itself, not something this general header should also pull in). */
+extern int setpgrp(int pid, int pgrp);
 #endif
 
 #endif

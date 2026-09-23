@@ -10,13 +10,18 @@
                           * prototypes (wait()/waitpid()) reference pid_t themselves */
 /* OPENSTEP 4.2's <sys/wait.h> is dual-mode, gated by _POSIX_SOURCE (confirmed by reading the real
  * header, not guessed): without it, WIFEXITED/WIFSIGNALED are defined against a `union wait`, not
- * a plain int, and WEXITSTATUS/WTERMSIG/waitpid() aren't declared at all -- only the union-based
- * wait()/wait3() are. With it, everything is the familiar plain-int POSIX form this file already
- * assumes. Defined only around this one include, matching stepscp.c's own established pattern for
- * the exact same kind of gate on <dirent.h>, since a feature-test macro can in principle change
- * what other headers expose too. */
+ * a plain int, and WEXITSTATUS/WTERMSIG aren't declared at all. With it, everything is the
+ * familiar plain-int POSIX form the rest of this file assumes (applied to a union wait's own
+ * .w_status member -- see reap_pending() below -- since waitpid() itself turned out not to be a
+ * real, linkable symbol on this system at all: only wait3() is, which needs `union wait` and the
+ * NeXT-native declarations _NEXT_SOURCE gates, a separate part of the same header, unconditional
+ * on _POSIX_SOURCE's own state so both can be active together). Both defined only around this one
+ * include, matching stepscp.c's own established pattern for the exact same kind of gate on
+ * <dirent.h>, since a feature-test macro can in principle change what other headers expose too. */
 #define _POSIX_SOURCE 1
+#define _NEXT_SOURCE 1
 #include <sys/wait.h>
+#undef _NEXT_SOURCE
 #undef _POSIX_SOURCE
 #include <sys/ioctl.h>
 
@@ -86,6 +91,64 @@ static int open_master_pty(char *slave_out)
     if (!name) { close(fd); return -1; }
     strcpy(slave_out, name);
     return fd;
+}
+#endif
+
+#ifdef OPENSTEP
+/* wait3() is the only genuinely linkable exit-reaping call on this system (waitpid() is declared
+ * by <sys/wait.h> but not actually implemented -- confirmed by a real hardware link failure, not
+ * guessed) -- and unlike waitpid(), it can only reap "the next available child", not one specific
+ * pid. Harmless with a single session, but a real problem with more than one open at once (each
+ * with its own forked child): one session's reap could catch a different session's child. Reaped
+ * (pid, status) pairs that don't belong to whoever's tick happened to reap them are stashed here,
+ * keyed by pid, for whichever session actually wants that pid to find later. */
+typedef struct reaped_child {
+    int pid, status;
+    struct reaped_child *next;
+} reaped_child;
+static reaped_child *reaped_list = NULL;
+
+static void reap_pending(void)
+{
+    union wait wstatus;
+    int pid;
+    for (;;) {
+        pid = wait3(&wstatus, WNOHANG, (struct rusage *)0);
+        if (pid <= 0) break;
+        {
+            reaped_child *n = (reaped_child *)malloc(sizeof(*n));
+            if (!n) break;
+            n->pid = pid;
+            n->status = wstatus.w_status;
+            n->next = reaped_list;
+            reaped_list = n;
+        }
+    }
+}
+
+static int reap_specific_child(int pid, int *status_out)
+{
+    reaped_child **pp;
+    reap_pending();
+    for (pp = &reaped_list; *pp; pp = &(*pp)->next) {
+        if ((*pp)->pid == pid) {
+            reaped_child *found = *pp;
+            *status_out = found->status;
+            *pp = found->next;
+            free(found);
+            return 1;
+        }
+    }
+    return 0;
+}
+#else
+/* Host testing only: plain waitpid() works fine here (it is the OPENSTEP side that lacks it), and
+ * can target a specific pid directly, so there is no shared-cache race to work around at all. */
+static void reap_pending(void) { }
+static int reap_specific_child(int pid, int *status_out)
+{
+    int w = waitpid(pid, status_out, WNOHANG);
+    return w == pid;
 }
 #endif
 
@@ -193,11 +256,35 @@ static int open_master_pty(char *slave_out)
         const char *base;
         char arg0[64];
 
+#ifdef OPENSTEP
+        /* setsid() itself doesn't exist here (see oscompat.h's own note) -- the classic BSD
+         * equivalent: detach from whatever's currently our controlling tty (inherited from
+         * whoever launched this app), then become a new process group leader, so that opening
+         * the new pty slave below (having no ctty and being a leader) auto-acquires it as the
+         * new controlling terminal, the pre-SysV-TIOCSCTTY BSD convention. Old-style 2-arg
+         * setpgrp(pid, pgrp) -- oscompat.h's own note explains why this BSD form, not setsid(). */
+        {
+            int ttyfd = open("/dev/tty", O_RDWR);
+            if (ttyfd >= 0) {
+#ifdef TIOCNOTTY
+                ioctl(ttyfd, TIOCNOTTY, 0);
+#endif
+                close(ttyfd);
+            }
+        }
+        setpgrp(0, getpid());
+#else
+        /* Host testing only: real setsid() works fine here (it is the OPENSTEP side that lacks
+         * it, and whose modern BSD-descended setpgrp() takes no arguments at all, unlike the
+         * classic 2-arg form above). */
         setsid();
+#endif
         slaveFD = open(slaveName, O_RDWR);
         if (slaveFD < 0) _exit(127);
 #ifdef TIOCSCTTY
-        ioctl(slaveFD, TIOCSCTTY, 0);       /* [V] acquire it as our controlling tty, if this ioctl exists here */
+        ioctl(slaveFD, TIOCSCTTY, 0);       /* [V] belt-and-suspenders in case this system ALSO
+                                              * needs an explicit claim despite the open()-based
+                                              * auto-acquire above; harmless either way if it does */
 #endif
         close(masterFD);
         dup2(slaveFD, 0); dup2(slaveFD, 1); dup2(slaveFD, 2);
@@ -231,6 +318,8 @@ static int open_master_pty(char *slave_out)
 
     if (state != PTY_RUNNING) return;
     [self flushPending];
+    reap_pending();                    /* opportunistic: keeps the shared cache fresh for whoever
+                                         * needs it (see reap_pending()'s own comment above) */
     n = read(masterFD, buf, sizeof(buf));
     if (n > 0) {
         [termView writeBytes:buf length:n];
@@ -244,14 +333,13 @@ static int open_master_pty(char *slave_out)
 
 - (void)childEnded
 {
-    int status = -1, wpid;
+    int status = -1;
     if (state != PTY_RUNNING) return;
     state = PTY_ENDED;
     [timer invalidate];
     [timer release];
     timer = nil;
-    wpid = waitpid(childPID, &status, 0);
-    if (wpid == childPID) {
+    if (reap_specific_child(childPID, &status)) {
         exitStatus = WIFEXITED(status) ? WEXITSTATUS(status)
                    : WIFSIGNALED(status) ? 128 + WTERMSIG(status) : -1;
     }
