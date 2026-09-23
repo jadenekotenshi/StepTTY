@@ -6,7 +6,16 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/types.h>
+/* OPENSTEP 4.2's <sys/wait.h> is dual-mode, gated by _POSIX_SOURCE (confirmed by reading the real
+ * header, not guessed): without it, WIFEXITED/WIFSIGNALED are defined against a `union wait`, not
+ * a plain int, and WEXITSTATUS/WTERMSIG/waitpid() aren't declared at all -- only the union-based
+ * wait()/wait3() are. With it, everything is the familiar plain-int POSIX form this file already
+ * assumes. Defined only around this one include, matching stepscp.c's own established pattern for
+ * the exact same kind of gate on <dirent.h>, since a feature-test macro can in principle change
+ * what other headers expose too. */
+#define _POSIX_SOURCE 1
 #include <sys/wait.h>
+#undef _POSIX_SOURCE
 #include <sys/ioctl.h>
 #include "oscompat.h"
 
