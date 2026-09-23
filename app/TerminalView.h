@@ -42,6 +42,8 @@
 - (void)setDelegate:(id)anObject;
 - (void)setScroller:(NSScroller *)aScroller;
 - (vt *)terminal;
+- (int)cols;
+- (int)rows;
 - (NSSize)contentSizeForCols:(int)c rows:(int)r;
 - (void)writeBytes:(const unsigned char *)bytes length:(int)n;
 - (void)fitToFrame;                        /* recompute cols/rows after the view was resized */

@@ -68,6 +68,17 @@ int main(void)
     EXPECT(tv != nil, "the window has a terminal view");
     if (!tv) return 1;
 
+    /* the pty's winsize must be pushed at startup, not just on a later resize -- otherwise it sits
+     * at 0x0 until the user manually resizes the window, which is what made `ls` and anything else
+     * that sizes its output off TIOCGWINSZ come out garbled */
+    [s terminalView:tv sendBytes:(const unsigned char *)"stty size\r" length:10];
+    {
+        vt *t = [tv terminal];
+        char want[32];
+        sprintf(want, "%d %d", t->rows, t->cols);
+        EXPECT(wait_for(tv, [NSString stringWithCString:want], 10), "pty winsize is set at startup, before any manual resize");
+    }
+
     [s terminalView:tv sendBytes:(const unsigned char *)"echo SMOKE_$((3*4))\r" length:20];
     EXPECT(wait_for(tv, @"SMOKE_12", 10), "a typed command runs in the real shell and its output reaches the screen");
 

@@ -78,6 +78,8 @@ static int iceil(float x)  { int i = (int)x; return (x > (float)i) ? i + 1 : i; 
     [self syncScroller];
 }
 - (vt *)terminal { return term; }
+- (int)cols { return cols; }
+- (int)rows { return rows; }
 - (BOOL)isOpaque { return YES; }
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)acceptsFirstMouse:(NSEvent *)theEvent { return YES; }

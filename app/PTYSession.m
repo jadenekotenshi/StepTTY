@@ -241,11 +241,20 @@ static int reap_specific_child(int pid, int *status_out)
     const char *shell;
     int flags;
     pid_t pid;
+    int initCols, initRows;
 
     [self buildWindow];
 
     masterFD = open_master_pty(slaveName);
     if (masterFD < 0) { [window close]; return NO; }
+
+    /* Captured before fork() (plain ints, safe to read post-fork in the child) so the child can
+     * push the pty's winsize on the slave, before exec, rather than the parent pushing it on the
+     * master right after fork() -- which races the child's own open() of the slave: on this host,
+     * TIOCSWINSZ/TIOCGWINSZ on the master fails with ENOTTY until the slave has been opened at
+     * least once. Setting it from the child guarantees the ordering. */
+    initCols = [termView cols];
+    initRows = [termView rows];
 
     pid = fork();
     if (pid < 0) { close(masterFD); masterFD = -1; [window close]; return NO; }
@@ -286,6 +295,13 @@ static int reap_specific_child(int pid, int *status_out)
                                               * needs an explicit claim despite the open()-based
                                               * auto-acquire above; harmless either way if it does */
 #endif
+        {
+            struct winsize ws;
+            memset(&ws, 0, sizeof(ws));
+            ws.ws_col = (unsigned short)initCols;
+            ws.ws_row = (unsigned short)initRows;
+            ioctl(slaveFD, TIOCSWINSZ, &ws);
+        }
         close(masterFD);
         dup2(slaveFD, 0); dup2(slaveFD, 1); dup2(slaveFD, 2);
         if (slaveFD > 2) close(slaveFD);
