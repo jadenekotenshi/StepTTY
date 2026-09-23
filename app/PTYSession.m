@@ -21,15 +21,19 @@
 #define _POSIX_SOURCE 1
 #define _NEXT_SOURCE 1
 #include <sys/wait.h>
-#undef _NEXT_SOURCE
 #undef _POSIX_SOURCE
+/* _NEXT_SOURCE stays defined a bit longer than _POSIX_SOURCE above: <sys/ioctl.h> below #imports
+ * <sys/termios.h> itself (confirmed by reading the real header, not guessed: ioctl.h line 324 is
+ * literally "#import <sys/termios.h>"), and #import -- unlike #include -- processes a file AT MOST
+ * ONCE per translation unit, full stop, regardless of what macros a LATER #include/#import of the
+ * same file sets. ONLCR (used below) sits behind "#if defined(_NEXT_SOURCE)" inside
+ * <sys/termios.h>; if <sys/ioctl.h>'s transitive #import processed that file FIRST, before
+ * _NEXT_SOURCE was defined, then this file's own later #include <termios.h> -- even with
+ * _NEXT_SOURCE freshly defined right before it -- would be a silent no-op, and ONLCR would still
+ * end up undeclared (exactly what happened when _NEXT_SOURCE was scoped to only the second
+ * #include). Keeping it defined across both includes guarantees whichever one actually triggers
+ * <sys/termios.h>'s first (and only) processing sees it. */
 #include <sys/ioctl.h>
-/* <termios.h>'s ONLCR (used below) is gated behind _NEXT_SOURCE too (confirmed by reading the real
- * header, not guessed): OPOST and struct termios/tcgetattr/tcsetattr/TCSANOW are all unconditional,
- * but ONLCR itself sits in the same "#if defined(_NEXT_SOURCE)" block as the delay/case-conversion
- * flags this file has no use for. Same discipline, same narrow scoping, as the _NEXT_SOURCE/
- * _POSIX_SOURCE dance around <sys/wait.h> above. */
-#define _NEXT_SOURCE 1
 #include <termios.h>
 #undef _NEXT_SOURCE
 
