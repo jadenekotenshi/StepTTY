@@ -1,0 +1,66 @@
+# Build StepTTY on OPENSTEP 4.2 (gcc 2.7.2).  Works with NeXT make or GNU make.
+#
+#   make -f Makefile.openstep test     # FIRST: run the C unit tests on the real compiler
+#   make -f Makefile.openstep          # build StepTTY.app
+#   make -f Makefile.openstep clean
+#
+# No GNU-make features are used (no wildcard, no pattern rules) so the stock
+# NeXT make can read it.  Object files are written next to their sources.
+
+CC       = cc
+OPT      = -O
+DEFS     = -DOPENSTEP
+CFLAGS   = $(OPT) -Wall $(DEFS) -Iterm -Iapp
+LIBS     = -framework AppKit -framework Foundation
+APP      = StepTTY.app
+VERSION  = 0.1.0
+
+# TODO once there's an icon (see StepSSH's app/StepSSH.iconheader/.tiff and tools/gen_icon.py for
+# the pattern to copy): Workspace takes an application's icon from a read-only __ICON segment
+# linked into the executable, not from a file in the .app folder. Until then this links without
+# one, same as StepSSH did before it had an icon of its own.
+
+TERM_OBJS = term/nsenc.o term/vt.o
+APP_OBJS  = app/AppController.o app/PTYSession.o app/TerminalView.o app/UIHelpers.o app/main.o
+
+.SUFFIXES: .c .m .o
+
+.c.o:
+	$(CC) $(CFLAGS) -c $< -o $@
+
+.m.o:
+	$(CC) $(CFLAGS) -c $< -o $@
+
+all: $(APP)/StepTTY
+
+$(APP)/StepTTY: $(TERM_OBJS) $(APP_OBJS)
+	-mkdir $(APP)
+	@( cd $(APP) ) >/dev/null 2>&1 || { echo "make: $(APP) is missing or is not a directory:"; ls -ld $(APP); echo "remove it and run make again"; exit 1; }
+	$(CC) -o $(APP)/StepTTY $(TERM_OBJS) $(APP_OBJS) $(LIBS)
+
+# ---- unit tests (plain C, no AppKit) ----
+# NOTE: OPENSTEP's mkdir has no -p option (it would create a directory named "-p").
+build/test_vt: tests/test_vt.c $(TERM_OBJS)
+	-mkdir build
+	@( cd build ) >/dev/null 2>&1 || { echo "make: build is missing or is not a directory:"; ls -ld build; echo "remove it and run make again"; exit 1; }
+	$(CC) $(CFLAGS) -o build/test_vt tests/test_vt.c $(TERM_OBJS)
+
+test: build/test_vt
+	build/test_vt
+
+# ---- install ----
+# OPENSTEP's own conventions: /LocalApps for a locally-built application (parallel to /NextApps
+# for vendor-shipped ones). Needs write access (root, typically); if mkdir/cp fails for that
+# reason, su or sudo and try again -- this target does not do that itself. UNVERIFIED: written to
+# match OPENSTEP's own directory layout, not yet actually run there.
+APPDIR = /LocalApps
+
+install: all
+	-mkdir $(APPDIR)
+	rm -rf $(APPDIR)/$(APP)
+	cp -r $(APP) $(APPDIR)/
+	@echo "installed: $(APPDIR)/$(APP)"
+
+clean:
+	rm -f term/*.o app/*.o
+	rm -rf build $(APP)
