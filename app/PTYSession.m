@@ -352,10 +352,16 @@ static int reap_specific_child(int pid, int *status_out)
         /* Never set before -- the child just inherited whatever $TERM happened to be in Workspace
          * Manager's own environment (almost certainly unset), so anything that consults termcap to
          * know what escape sequences this terminal understands (tset during .login, clear(1), vi's
-         * cursor-key handling) had nothing sensible to look up. "xterm" is not a guess: it is the
-         * exact terminal type StepSSH's own pty-req already sends for real SSH sessions using this
-         * same vt.c (see app/SSHSession.m), so it is already proven to match what this emulator
-         * actually implements.
+         * cursor-key handling) had nothing sensible to look up. "xterm" (StepSSH's own pty-req
+         * value for real, remote SSH sessions using this same vt.c) was tried first and turned out
+         * to be wrong specifically for OPENSTEP's own, much older, local termcap database: arrow
+         * keys did nothing in vi/emacs even though tracing proved the correct \033[A-style bytes
+         * were genuinely being sent and received (confirmed via zsh's own quoted-insert). The actual
+         * fix was found by comparing against OPENSTEP's own native Terminal.app, where arrow keys
+         * already work -- it uses TERM=vt100, not xterm. A remote SSH server's terminfo database is
+         * basically guaranteed complete and modern; this 1996-era local one apparently is not, for
+         * "xterm" specifically -- "vt100" is the safe baseline every Unix termcap has had correctly
+         * since the 1980s, and is what NeXT's own terminal app already relies on here.
          *
          * putenv() itself turned out not to be a real, linkable symbol here -- the same class of
          * gap as setsid()/waitpid()/tcgetattr()/tcsetattr() (declared by the headers, genuinely
@@ -366,7 +372,7 @@ static int reap_specific_child(int pid, int *status_out)
          * $TERM there without needing any "set an env var" library call to exist at all. */
         {
             extern char **environ;
-            static char term_var[] = "TERM=xterm";
+            static char term_var[] = "TERM=vt100";
             static char *new_environ[64];
             int i = 0;
             while (environ[i] && i < 62) { new_environ[i] = environ[i]; i++; }

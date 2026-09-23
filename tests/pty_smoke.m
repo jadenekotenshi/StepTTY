@@ -82,11 +82,13 @@ int main(void)
     [s terminalView:tv sendBytes:(const unsigned char *)"echo SMOKE_$((3*4))\r" length:20];
     EXPECT(wait_for(tv, @"SMOKE_12", 10), "a typed command runs in the real shell and its output reaches the screen");
 
-    /* $TERM must reach the shell as "xterm" -- the same terminal type StepSSH's own pty-req sends
-     * for this identical vt.c, so anything that consults termcap (tset during login, clear(1),
-     * vi's cursor keys) has something to look up that actually matches what this emulator does. */
+    /* $TERM must reach the shell as "vt100" -- confirmed on real OPENSTEP hardware to be the value
+     * that actually matches its own (much older) local termcap database: "xterm" sent the correct
+     * escape sequences (verified independently) but OPENSTEP's own termcap entry for "xterm" still
+     * left arrow keys unbound in vi/emacs, while "vt100" -- what OPENSTEP's own native Terminal.app
+     * already uses -- works. */
     [s terminalView:tv sendBytes:(const unsigned char *)"echo TERM_IS_$TERM\r" length:19];
-    EXPECT(wait_for(tv, @"TERM_IS_xterm", 10), "TERM=xterm reaches the shell environment");
+    EXPECT(wait_for(tv, @"TERM_IS_vt100", 10), "TERM=vt100 reaches the shell environment");
 
     /* A bare LF (no CR) written by the child must still land at column 0 of the next row -- the
      * pty's own line discipline (ONLCR) is responsible for that translation, not vt.c (which
