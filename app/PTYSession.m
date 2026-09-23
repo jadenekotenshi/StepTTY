@@ -6,6 +6,8 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/types.h>
+#include "oscompat.h"    /* pid_t: must come before <sys/wait.h> below, whose own POSIX-mode
+                          * prototypes (wait()/waitpid()) reference pid_t themselves */
 /* OPENSTEP 4.2's <sys/wait.h> is dual-mode, gated by _POSIX_SOURCE (confirmed by reading the real
  * header, not guessed): without it, WIFEXITED/WIFSIGNALED are defined against a `union wait`, not
  * a plain int, and WEXITSTATUS/WTERMSIG/waitpid() aren't declared at all -- only the union-based
@@ -17,7 +19,6 @@
 #include <sys/wait.h>
 #undef _POSIX_SOURCE
 #include <sys/ioctl.h>
-#include "oscompat.h"
 
 #ifndef O_NONBLOCK
 #define O_NONBLOCK O_NDELAY
