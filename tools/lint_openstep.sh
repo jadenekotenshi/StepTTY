@@ -45,6 +45,14 @@ for f in term/*.c app/*.m; do
     grep -q "$o" Makefile.openstep || { echo "LINT: $f is not listed in Makefile.openstep (it would fail to link)"; status=1; }
 done
 
+# --- the application icon: Workspace reads it from a __ICON segment linked into the executable ---
+if [ ! -f app/StepTTY.iconheader ] || [ ! -f app/StepTTY.tiff ]; then
+    echo "LINT: app/StepTTY.iconheader and app/StepTTY.tiff are both required (Workspace icon)"; status=1
+elif ! awk -F'\t' 'NF != 4 || ($1 != "F" && $1 != "S") { bad = 1 } END { exit bad }' app/StepTTY.iconheader; then
+    echo "LINT: app/StepTTY.iconheader lines must be 4 TAB-separated fields starting F or S"; status=1
+fi
+grep -q "__ICON" Makefile.openstep || { echo "LINT: Makefile.openstep does not link the __ICON segment"; status=1; }
+
 # --- static tables of Objective-C string constants (old gcc may reject them) ---
 if command -v python3 >/dev/null 2>&1; then
     python3 tools/check_static_init.py >/dev/null || { python3 tools/check_static_init.py; status=1; }

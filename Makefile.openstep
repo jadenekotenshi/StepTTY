@@ -23,10 +23,16 @@ LIBS     = -framework AppKit -framework Foundation
 APP      = StepTTY.app
 VERSION  = 0.0.1
 
-# TODO once there's an icon (see StepSSH's app/StepSSH.iconheader/.tiff and tools/gen_icon.py for
-# the pattern to copy): Workspace takes an application's icon from a read-only __ICON segment
-# linked into the executable, not from a file in the .app folder. Until then this links without
-# one, same as StepSSH did before it had an icon of its own.
+# Workspace takes an application's icon (and its file-type table) from a read-only __ICON segment
+# linked into the executable, not from a file in the .app folder (compare /NextApps/Edit.app, whose
+# only non-language files are the executable and some TIFFs) -- and, on real hardware, Workspace
+# Manager silently refuses to launch a bundle lacking one at all (confirmed: neither `open` nor a
+# Workspace double-click did anything for StepTTY.app until this was added -- the exact same failure
+# StepSSH hit before it got its own icon). app/StepTTY.iconheader says which icon belongs to the
+# app; app/StepTTY.tiff is the icon (regenerate: python3 tools/gen_icon.py).
+ICONHDR   = app/StepTTY.iconheader
+ICONTIFF  = app/StepTTY.tiff
+ICONFLAGS = -sectcreate __ICON __header $(ICONHDR) -segprot __ICON r r -sectcreate __ICON app $(ICONTIFF)
 
 TERM_OBJS = term/nsenc.o term/vt.o
 APP_OBJS  = app/AppController.o app/PTYSession.o app/TerminalView.o app/UIHelpers.o app/main.o
@@ -41,10 +47,14 @@ APP_OBJS  = app/AppController.o app/PTYSession.o app/TerminalView.o app/UIHelper
 
 all: $(APP)/StepTTY
 
-$(APP)/StepTTY: $(TERM_OBJS) $(APP_OBJS)
+$(APP)/StepTTY: $(TERM_OBJS) $(APP_OBJS) $(ICONHDR) $(ICONTIFF)
 	-mkdir $(APP)
 	@( cd $(APP) ) >/dev/null 2>&1 || { echo "make: $(APP) is missing or is not a directory:"; ls -ld $(APP); echo "remove it and run make again"; exit 1; }
-	$(CC) $(ARCHS) -o $(APP)/StepTTY $(TERM_OBJS) $(APP_OBJS) $(LIBS)
+	$(CC) $(ARCHS) -o $(APP)/StepTTY $(TERM_OBJS) $(APP_OBJS) $(ICONFLAGS) $(LIBS) || { echo "make: linking with the __ICON segment failed; retrying without an icon"; $(CC) $(ARCHS) -o $(APP)/StepTTY $(TERM_OBJS) $(APP_OBJS) $(LIBS); }
+
+# Show what was linked in: expect a segment __ICON with sections __header and app.
+iconcheck:
+	otool -l $(APP)/StepTTY | grep -A 3 __ICON
 
 # ---- unit tests (plain C, no AppKit) ----
 # NOTE: OPENSTEP's mkdir has no -p option (it would create a directory named "-p").

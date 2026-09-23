@@ -13,10 +13,9 @@ Opens a window running a real login shell (`$SHELL`, or `/bin/csh` if that's uns
 pseudo-terminal, the traditional `Terminal.app` role. "New Window" (Cmd-N) opens another; each
 window is independent. There is no in-window tab UI yet -- multiple windows is where this starts.
 
-**Not yet built:** an application icon. `install`/`pkg`/`dist` and their fat (i386+m68k+sparc)
-equivalents are all in `Makefile.openstep` now, built directly on the lessons StepSSH's own
-packaging saga worked out the hard way (see its README/Makefile.openstep for that whole story) --
-not yet confirmed on real hardware, but not guessed at from scratch either.
+`install`/`pkg`/`dist` and their fat (i386+m68k+sparc) equivalents are all in `Makefile.openstep`
+now, built directly on the lessons StepSSH's own packaging saga worked out the hard way (see its
+README/Makefile.openstep for that whole story).
 
 ## What was verified, and what was not
 
@@ -25,34 +24,39 @@ not yet confirmed on real hardware, but not guessed at from scratch either.
   StepSSH-specific coupling in the terminal emulator itself).
 - `make pty-smoke` -- drives a *real* `PTYSession` (real pty, real `fork()`/`exec()` of a real
   shell) against real Cocoa on the host: a typed command actually runs and its output reaches the
-  screen, a 2000-line burst is received, window resize reaches the pty (`TIOCSWINSZ`,
-  `stty size` confirms it), exit is detected via pty EOF/EIO, the exit status is read back
-  correctly via `waitpid()`, and the window/owner-notification lifecycle behaves as designed
+  screen, a 2000-line burst is received, the pty's winsize is pushed at startup *and* on later
+  resize (`TIOCSWINSZ`, `stty size` confirms both), exit is detected via pty EOF/EIO, the exit
+  status is read back correctly, and the window/owner-notification lifecycle behaves as designed
   (stays open after the shell exits, notifies the owner exactly once, whenever the window
   actually closes).
 - `make check-objc`, `make lint`.
 
-**Confirmed on OPENSTEP 4.2**: nothing yet -- this is a brand new project.
-
-### The one real platform gap already found
-
-Classic BSD pty allocation (`/dev/pty<letter><hexdigit>` master + matching `/dev/tty<letter><hexdigit>`
-slave -- the manual scheme every 4.3BSD-heritage system has supported since long before
-`openpty()`/`posix_openpt()` existed) is `app/PTYSession.m`'s plan for OPENSTEP itself, chosen
-because OPENSTEP's BSD heritage makes it far more likely to work there than the modern
-`/dev/ptmx`-based mechanism. It could not be verified end-to-end on this Mac: the classic device
-nodes are still visible (`ls /dev/pty*`), but `open()` on any of them now fails unconditionally
-with `EAGAIN` -- a confirmed, not guessed, modern-macOS-specific deprecation. `app/PTYSession.m`
-uses `#ifdef OPENSTEP` to keep the classic scheme for the real target while the host build (and
-`make pty-smoke`) uses `/dev/ptmx` instead, so the rest of the session logic (fork/exec, the poll
-loop, backpressure, EOF/exit-status handling) still gets genuinely exercised even though the
-actual pty-opening mechanism necessarily differs. **This is the first thing to check when this
-gets built on real hardware**: does `open_master_pty()`'s `#ifdef OPENSTEP` branch actually find a
-device that opens? If not, report back exactly what `ls /dev/pty*` and the resulting error show.
+**Confirmed on real OPENSTEP 4.2 hardware**:
+- The app builds and links.
+- Classic BSD pty allocation (`/dev/pty<letter><hexdigit>` master + matching
+  `/dev/tty<letter><hexdigit>` slave) works as `open_master_pty()`'s `#ifdef OPENSTEP` branch
+  expects.
+- `setsid()` and `waitpid()` are declared by the headers but are **not actually linkable symbols**
+  on this system -- genuinely absent, not just undeclared, real POSIX.1-1988 additions this
+  BSD-4.3-heritage system predates implementing. Replaced with the classic BSD equivalents:
+  `setpgrp(pid, pgrp)` (old 2-arg form) + `TIOCNOTTY` on `/dev/tty` instead of `setsid()`, and
+  `wait3()` (which, unlike `waitpid()`, can only reap "the next available child" -- handled with a
+  shared reap-cache in `app/PTYSession.m` so multiple simultaneous windows each get their own
+  child's exit status correctly) instead of `waitpid()`.
+- The pty's winsize must be pushed explicitly at startup (from the child, on the slave fd, before
+  `exec`) -- it is not implicitly correct from a window built at the "default" size, since nothing
+  had ever changed to trigger the resize path. Without this, anything sizing its output off
+  `TIOCGWINSZ` (`ls`'s multi-column layout, most visibly) came out garbled.
+- Workspace Manager (both `open` and a double-click) silently refuses to launch an app bundle that
+  lacks a `__ICON` Mach-O segment -- the exact same failure StepSSH hit before it got its own icon
+  (see StepSSH's own history). `app/StepTTY.iconheader` + `app/StepTTY.tiff`, linked in via
+  `Makefile.openstep`'s `ICONFLAGS`, fix this; **not yet confirmed** this actually resolves the
+  launch failure on real hardware (the fix mirrors StepSSH's proven one exactly, but hasn't been
+  tested on real hardware yet).
 
 Also marked `[V]` in `app/PTYSession.m` (verify on OPENSTEP): whether `TIOCSCTTY` exists there for
-the child to acquire a controlling terminal, and whether `TIOCSWINSZ` (window resize) exists as
-the same ioctl BSD systems have had since long before OPENSTEP too, but not directly confirmed.
+the child to acquire a controlling terminal (should be moot in practice -- the classic BSD
+open()-acquires-ctty convention already used instead, see above).
 
 ## Building
 
