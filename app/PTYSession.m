@@ -48,6 +48,8 @@
 #endif
 
 #define TICK_SECONDS 0.02
+#define MAX_READS_PER_TICK 8             /* x 16 KB, within TICK_BUDGET seconds */
+#define TICK_BUDGET 0.03
 
 /* gcc 2.7.2 does not look ahead within an @implementation, so anything called
  * before its definition must be declared here. */
@@ -416,14 +418,29 @@ static int reap_specific_child(int pid, int *status_out)
     [self flushPending];
     reap_pending();                    /* opportunistic: keeps the shared cache fresh for whoever
                                          * needs it (see reap_pending()'s own comment above) */
-    n = read(masterFD, buf, sizeof(buf));
-    if (n > 0) {
-        [termView writeBytes:buf length:n];
-        [self refreshTitle];
-    } else if (n == 0 || (n < 0 && errno == EIO)) {           /* EIO: the classic "far end hung up" for a pty */
+    /* Take in what has arrived -- more than one read's worth if a flood is under way, while the tick's time budget lasts --
+     * and redraw once afterwards (the view's frame cap decides when). A full buffer means there may be more waiting. */
+    {
+        NSTimeInterval t0 = [NSDate timeIntervalSinceReferenceDate];
+        int reads = 0;
+
+        do {
+            n = read(masterFD, buf, sizeof(buf));
+            if (n > 0) {
+                [termView writeBytes:buf length:n];
+                reads++;
+            }
+        } while (n == (int)sizeof(buf) && reads < MAX_READS_PER_TICK && [NSDate timeIntervalSinceReferenceDate] - t0 < TICK_BUDGET);
+        if (reads > 0) [self refreshTitle];
+    }
+    if (n == 0 || (n < 0 && errno == EIO)) {                   /* EIO: the classic "far end hung up" for a pty */
+        [termView flushDisplay];                               /* the last output must show */
         [self childEnded];
     } else if (n < 0 && errno != EWOULDBLOCK && errno != EAGAIN && errno != EINTR) {
+        [termView flushDisplay];
         [self childEnded];
+    } else {
+        [termView flushDisplayIfDue];                          /* includes the trailing flush after a burst has ended */
     }
 }
 

@@ -119,6 +119,27 @@ tool, the plain-text `.info` format, `LongFileNames NO`, `chgrp nogroup`, the `N
   generation, no RNG/entropy machinery -- there is no cryptography anywhere in this app). Just
   owns the list of open `PTYSession`s and answers "New Window".
 
+## Output speed and paste safety (ideas from [Rome](https://github.com/anurodhp/rome))
+
+Three changes, none of which touch what the terminal emulates. **UNVERIFIED on real OPENSTEP hardware**: the host
+tests (`make test`, `make pty-smoke`) cover the logic and that a partial redraw paints exactly what a full one does, but
+not how fast or how it looks on the real window server.
+
+- **Dirty cells.** `term/vt.c` now records, for each changed row, the span of columns that changed
+  (`dirty_x0`/`dirty_x1` next to the per-row `dirty` flag), and `TerminalView` asks AppKit to redraw only those columns
+  (one more on each side, because a bold glyph overstrikes a point to the right), plus the cell the cursor left and the one
+  it is in. `-drawRect:` then draws only the columns the rectangle touches. A scroll, a clear or a resize still redraws
+  whole rows or the whole view. (`term/vt.c` has diverged from StepSSH's copy here; StepSSH is unchanged.)
+- **Frame cap.** Output is still read and fed to the emulator as it arrives -- and now up to eight 16 KB reads per 20 ms
+  tick while a flood lasts, instead of one -- but the view hands AppKit what changed at most 20 times a second. A
+  character typed after a quiet moment is redrawn at once; the tick flushes whatever is pending once the frame interval
+  has passed, and the end of the shell flushes at once. Change the rate with
+  `defaults write StepTTY StepTTYMaxFPS 30` (OPENSTEP: `dwrite StepTTY StepTTYMaxFPS 30`); `0` redraws on every write.
+- **Paste confirmation.** Pasting more than one line (a trailing newline does not count) asks "Paste N lines?" with the
+  first few lines shown, since a shell runs them the moment they arrive. It is skipped when the program in the terminal
+  has turned on bracketed paste (it then holds the paste back itself), and switched off with
+  `defaults write StepTTY StepTTYConfirmPaste NO`.
+
 ## Startup diagnostics
 
 Workspace throws a launched application's stderr away. `touch ~/.StepTTY.trace` before launching
