@@ -3,7 +3,7 @@
 #include "nsenc.h"
 #include <string.h>
 
-#define DEFAULT_MAX_FPS 20.0                 /* redraws a second at most, unless StepTTYMaxFPS says otherwise */
+#define DEFAULT_MAX_FPS 20.0                 /* redraws a second at most, unless TerminalMaxFPS says otherwise */
 #define MARGIN 3.0
 
 /* floor/ceil without <math.h>: an undeclared floor() would be assumed to return int and
@@ -58,10 +58,10 @@ static int iceil(float x)  { int i = (int)x; return (x > (float)i) ? i + 1 : i; 
     lastSb = 0;
     {
         NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
-        float fps = ([d objectForKey:@"StepTTYMaxFPS"] != nil) ? [d floatForKey:@"StepTTYMaxFPS"] : DEFAULT_MAX_FPS;
+        float fps = ([d objectForKey:@"TerminalMaxFPS"] != nil) ? [d floatForKey:@"TerminalMaxFPS"] : DEFAULT_MAX_FPS;
 
         minFlushInterval = (fps > 0.0) ? 1.0 / fps : 0.0;
-        confirmPaste = ([d objectForKey:@"StepTTYConfirmPaste"] == nil) ? YES : [d boolForKey:@"StepTTYConfirmPaste"];
+        confirmPaste = ([d objectForKey:@"TerminalConfirmPaste"] == nil) ? YES : [d boolForKey:@"TerminalConfirmPaste"];
     }
     pasteAnswer = -1;
     [self fitToFrame];

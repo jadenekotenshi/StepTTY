@@ -132,13 +132,13 @@ not how fast or how it looks on the real window server.
   whole rows or the whole view. (`term/vt.c` has diverged from StepSSH's copy here; StepSSH is unchanged.)
 - **Frame cap.** Output is still read and fed to the emulator as it arrives -- and now up to eight 16 KB reads per 20 ms
   tick while a flood lasts, instead of one -- but the view hands AppKit what changed at most 20 times a second. A
-  character typed after a quiet moment is redrawn at once; the tick flushes whatever is pending once the frame interval
-  has passed, and the end of the shell flushes at once. Change the rate with
-  `defaults write StepTTY StepTTYMaxFPS 30` (OPENSTEP: `dwrite StepTTY StepTTYMaxFPS 30`); `0` redraws on every write.
+  character typed after a quiet moment is redrawn at once; a redraw deferred by the cap happens on the view's own one-shot timer (and on the next tick,
+  whichever comes first), and the end of the shell flushes at once. Change the rate with
+  `defaults write StepTTY TerminalMaxFPS 30` (OPENSTEP: `dwrite StepTTY TerminalMaxFPS 30`); `0` redraws on every write.
 - **Paste confirmation.** Pasting more than one line (a trailing newline does not count) asks "Paste N lines?" with the
   first few lines shown, since a shell runs them the moment they arrive. It is skipped when the program in the terminal
   has turned on bracketed paste (it then holds the paste back itself), and switched off with
-  `defaults write StepTTY StepTTYConfirmPaste NO`.
+  `defaults write StepTTY TerminalConfirmPaste NO`.
 
 ## Startup diagnostics
 
