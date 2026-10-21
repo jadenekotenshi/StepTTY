@@ -21,6 +21,7 @@ static int iceil(float x)  { int i = (int)x; return (x > (float)i) ? i + 1 : i; 
 - (BOOL)cellIsSelectedLine:(int)line col:(int)col;
 - (void)syncScroller;
 - (void)markDirty;
+- (void)flushTimerFired:(NSTimer *)timer;
 - (NSRect)rectForRow:(int)r from:(int)c0 to:(int)c1;
 - (void)sendString:(NSString *)s;
 - (void)escTimeout:(NSTimer *)timer;
@@ -71,6 +72,7 @@ static int iceil(float x)  { int i = (int)x; return (x > (float)i) ? i + 1 : i; 
 {
     int i;
     [escTimer invalidate];
+    [flushTimer invalidate];
     vt_free(term);
     [font release];
     [defaultFg release];
@@ -199,8 +201,18 @@ static int iceil(float x)  { int i = (int)x; return (x > (float)i) ? i + 1 : i; 
     vt_clear_dirty(term);
 }
 
+/* A deferred redraw must not depend on whoever feeds the view ticking again (a session's timer stops when its
+ * connection ends), so the view schedules its own one-shot timer for the end of the frame interval. */
+- (void)flushTimerFired:(NSTimer *)timer
+{
+    flushTimer = nil;                              /* a non-repeating NSTimer invalidates itself on firing */
+    [self flushDisplay];
+}
+
 - (void)flushDisplay
 {
+    [flushTimer invalidate];
+    flushTimer = nil;
     if (!pendingFlush) return;
     pendingFlush = NO;
     lastFlush = [NSDate timeIntervalSinceReferenceDate];
@@ -211,7 +223,15 @@ static int iceil(float x)  { int i = (int)x; return (x > (float)i) ? i + 1 : i; 
 - (void)flushDisplayIfDue
 {
     if (!pendingFlush) return;
-    if (minFlushInterval > 0.0 && [NSDate timeIntervalSinceReferenceDate] - lastFlush < minFlushInterval) return;
+    if (minFlushInterval > 0.0 && [NSDate timeIntervalSinceReferenceDate] - lastFlush < minFlushInterval) {
+        if (flushTimer == nil) {
+            NSTimeInterval wait = minFlushInterval - ([NSDate timeIntervalSinceReferenceDate] - lastFlush);
+
+            flushTimer = [NSTimer scheduledTimerWithTimeInterval:(wait > 0.001 ? wait : 0.001) target:self
+                                                        selector:@selector(flushTimerFired:) userInfo:nil repeats:NO];
+        }
+        return;
+    }
     [self flushDisplay];
 }
 
@@ -757,7 +777,7 @@ static int paste_lines(NSString *s)
     return lines;
 }
 
-/* Several lines pasted into a shell run as commands the moment they arrive, so the person is asked first -- unless the
+/* Several lines pasted run as commands (or go out as messages) the moment they arrive, so the person is asked first -- unless the
  * program in the terminal has asked for bracketed paste (it then knows the text came from a paste and holds it back). */
 - (BOOL)confirmPasteOf:(NSString *)s
 {
@@ -779,7 +799,7 @@ static int paste_lines(NSString *s)
     }
     if (lines > 4) [preview appendString:@"..."];
     return NSRunAlertPanel([NSString stringWithFormat:@"Paste %d lines?", lines],
-                           @"The shell will run them as soon as they arrive:\n\n%@", @"Paste", @"Cancel", nil, preview)
+                           @"Each line is sent as soon as it arrives:\n\n%@", @"Paste", @"Cancel", nil, preview)
            == NSAlertDefaultReturn;
 }
 

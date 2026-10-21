@@ -25,6 +25,7 @@
     NSTimeInterval lastFlush;
     NSTimeInterval minFlushInterval;           /* 0: every write redraws */
     BOOL       pendingFlush;                   /* the terminal changed since the last flush */
+    NSTimer   *flushTimer;                     /* a deferred flush is due when it fires (not retained: it is the run loop's) */
     int        flushCount;                     /* flushes so far, and what the last one asked AppKit to redraw: for the tests */
     float      lastFlushArea;
     BOOL       confirmPaste;                   /* ask before pasting more than one line */

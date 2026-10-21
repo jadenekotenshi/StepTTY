@@ -119,6 +119,12 @@ int main(void)
         EXPECT([v flushCount] == before + 1, "...but once the interval has passed the pending output is redrawn, once");
         [v flushDisplayIfDue];
         EXPECT([v flushCount] == before + 1, "nothing pending, nothing redrawn");
+        /* a deferred redraw happens on its own, with nobody ticking */
+        put(v, "q");
+        put(v, "r");
+        before = [v flushCount];
+        spin(0.25);
+        EXPECT([v flushCount] == before + 1, "output deferred by the cap is redrawn by the view's own timer, without any tick");
         [v setMaxFPS:0.0];
         before = [v flushCount];
         for (i = 0; i < 5; i++) put(v, "y");
