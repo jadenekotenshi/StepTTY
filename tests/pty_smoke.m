@@ -217,6 +217,7 @@ int main(void)
         EXPECT(wait_for(tv, [NSString stringWithCString:want], 10), "pty winsize is set at startup, before any manual resize");
     }
 
+    printf("  (bold face found for the terminal font: %s)\n", [tv hasBoldFont] ? "yes" : "no");
     [s terminalView:tv sendBytes:(const unsigned char *)"echo SMOKE_$((3*4))\r" length:20];
     EXPECT(wait_for(tv, @"SMOKE_12", 10), "a typed command runs in the real shell and its output reaches the screen");
 
