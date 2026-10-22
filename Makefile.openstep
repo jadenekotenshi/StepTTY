@@ -47,6 +47,16 @@ APP_OBJS  = app/AppController.o app/PTYSession.o app/TerminalView.o app/UIHelper
 
 all: $(APP)/StepTTY
 
+# Header dependencies: a changed header rebuilds what includes it.  (This makefile once kept an object file built
+# against an old struct layout; the link worked and the program misbehaved.)  tools/lint_openstep.sh checks the lists
+# are complete.
+
+TERM_HEADERS  = term/colours.h term/nsenc.h term/nsenc_tab.h term/vt.h
+APP_HEADERS   = app/AppController.h app/Compat.h app/PTYSession.h app/TerminalView.h app/UIHelpers.h \
+                app/oscompat.h $(TERM_HEADERS)
+$(TERM_OBJS): $(TERM_HEADERS)
+$(APP_OBJS): $(APP_HEADERS)
+
 $(APP)/StepTTY: $(TERM_OBJS) $(APP_OBJS) $(ICONHDR) $(ICONTIFF)
 	-mkdir $(APP)
 	@( cd $(APP) ) >/dev/null 2>&1 || { echo "make: $(APP) is missing or is not a directory:"; ls -ld $(APP); echo "remove it and run make again"; exit 1; }
