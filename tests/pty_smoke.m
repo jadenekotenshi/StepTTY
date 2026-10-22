@@ -220,13 +220,11 @@ int main(void)
     [s terminalView:tv sendBytes:(const unsigned char *)"echo SMOKE_$((3*4))\r" length:20];
     EXPECT(wait_for(tv, @"SMOKE_12", 10), "a typed command runs in the real shell and its output reaches the screen");
 
-    /* $TERM must reach the shell as "vt100" -- confirmed on real OPENSTEP hardware to be the value
-     * that actually matches its own (much older) local termcap database: "xterm" sent the correct
-     * escape sequences (verified independently) but OPENSTEP's own termcap entry for "xterm" still
-     * left arrow keys unbound in vi/emacs, while "vt100" -- what OPENSTEP's own native Terminal.app
-     * already uses -- works. */
+    /* $TERM must reach the shell: "xterm" by default (it was "vt100" until the terminal learned what the ncurses xterm
+     * entry relies on; vt100 has no colours).  Arrow keys in OPENSTEP's own vi/emacs, which use its old termcap xterm
+     * entry, are the thing to watch on real hardware; the TerminalTERM default switches back. */
     [s terminalView:tv sendBytes:(const unsigned char *)"echo TERM_IS_$TERM\r" length:19];
-    EXPECT(wait_for(tv, @"TERM_IS_vt100", 10), "TERM=vt100 reaches the shell environment");
+    EXPECT(wait_for(tv, @"TERM_IS_xterm", 10), "TERM=xterm reaches the shell environment");
 
     /* A bare LF (no CR) written by the child must still land at column 0 of the next row -- the
      * pty's own line discipline (ONLCR) is responsible for that translation, not vt.c (which
@@ -266,6 +264,24 @@ int main(void)
     [[s window] close];
     spin(0.2);
     EXPECT([owner ended], "closing the window (even after the shell already exited) notifies the owner exactly then");
+
+    /* the TerminalTERM default overrides it */
+    {
+        Owner *owner2 = [[[Owner alloc] init] autorelease];
+        PTYSession *s2;
+        TerminalView *tv2;
+
+        [[NSUserDefaults standardUserDefaults] setObject:@"vt100" forKey:@"TerminalTERM"];
+        s2 = [[PTYSession alloc] initWithOwner:owner2];
+        EXPECT([s2 start], "a second session starts");
+        tv2 = find_terminal([s2 window]);
+        [s2 terminalView:tv2 sendBytes:(const unsigned char *)"echo TERM_IS_$TERM\r" length:19];
+        EXPECT(wait_for(tv2, @"TERM_IS_vt100", 10), "the TerminalTERM default changes the shell's TERM");
+        [s2 shutdown];
+        [[s2 window] close];
+        [s2 release];
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"TerminalTERM"];
+    }
 
     printf("pty smoke: %d passed, %d failed\n", pass, fail);
     [pool release];

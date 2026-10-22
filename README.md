@@ -63,12 +63,12 @@ APIs, and stubs out the actual PostScript text-drawing calls -- see below):
   (see StepSSH's own history). Fixed the same way: `app/StepTTY.iconheader` + `app/StepTTY.tiff`,
   linked in via `Makefile.openstep`'s `ICONFLAGS`.
 - `$TERM` must be set explicitly (the child otherwise just inherits Workspace Manager's own,
-  essentially empty, environment) -- and specifically to `vt100`, not `xterm`. `xterm` is what
-  StepSSH's own SSH `pty-req` correctly uses for *remote* sessions (a modern remote server's
-  terminfo database is basically guaranteed complete), but OPENSTEP's own, much older, *local*
-  termcap database turned out not to have a working `xterm` entry for cursor keys specifically --
-  confirmed by comparison against OPENSTEP's own native Terminal.app, which already works and uses
-  `vt100`, the universal baseline every Unix termcap has had correctly since the 1980s.
+  essentially empty, environment). It was `vt100` for a long time: `xterm` had turned out not to work with
+  OPENSTEP's own, much older, *local* termcap database for cursor keys specifically (confirmed against
+  OPENSTEP's own native Terminal.app, which uses `vt100`). But `vt100` has no colours and ncurses programs
+  (the openstep-pkg ncurses brings a complete terminfo, `xterm` included) want `xterm`, and the terminal now
+  implements what that entry relies on (repeat-character among them), so the default is `xterm`.
+  `defaults write StepTTY TerminalTERM vt100` goes back, should the system's vi/emacs lose their arrow keys.
 
 `pkg`, `dist`, and their fat (i386+m68k+sparc) equivalents `install-fat`/`pkg-fat`/`dist-fat` are
 all confirmed working on real hardware, built on the same `Installer.app/package` mechanics

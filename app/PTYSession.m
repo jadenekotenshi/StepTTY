@@ -1,4 +1,5 @@
 #import "PTYSession.h"
+#import "UIHelpers.h"
 #include <string.h>
 #include <stdlib.h>              /* posix_openpt/grantpt/unlockpt/ptsname on the host build */
 #include <errno.h>
@@ -265,6 +266,7 @@ static int reap_specific_child(int pid, int *status_out)
     int flags;
     pid_t pid;
     int initCols, initRows;
+    char termVar[64];
 
     [self buildWindow];
 
@@ -278,6 +280,15 @@ static int reap_specific_child(int pid, int *status_out)
      * least once. Setting it from the child guarantees the ordering. */
     initCols = [termView cols];
     initRows = [termView rows];
+
+    /* The terminal type the shell is told (set before fork(): no Objective-C afterwards).  "xterm" unless the TerminalTERM
+     * default says otherwise (defaults write StepTTY TerminalTERM vt100). */
+    {
+        NSString *t = [[NSUserDefaults standardUserDefaults] stringForKey:@"TerminalTERM"];
+        const char *name = (t && [t length] > 0 && [t length] < 40) ? UI_CPATH(t) : "xterm";
+        strcpy(termVar, "TERM=");
+        strcat(termVar, name);
+    }
 
     pid = fork();
     if (pid < 0) { close(masterFD); masterFD = -1; [window close]; return NO; }
@@ -358,34 +369,34 @@ static int reap_specific_child(int pid, int *status_out)
         if (slaveFD > 2) close(slaveFD);
 
         /* Never set before -- the child just inherited whatever $TERM happened to be in Workspace
-         * Manager's own environment (almost certainly unset), so anything that consults termcap to
+         * Manager's own environment (almost certainly unset), so anything that consults the terminal database to
          * know what escape sequences this terminal understands (tset during .login, clear(1), vi's
-         * cursor-key handling) had nothing sensible to look up. "xterm" (StepSSH's own pty-req
-         * value for real, remote SSH sessions using this same vt.c) was tried first and turned out
-         * to be wrong specifically for OPENSTEP's own, much older, local termcap database: arrow
-         * keys did nothing in vi/emacs even though tracing proved the correct \033[A-style bytes
-         * were genuinely being sent and received (confirmed via zsh's own quoted-insert). The actual
-         * fix was found by comparing against OPENSTEP's own native Terminal.app, where arrow keys
-         * already work -- it uses TERM=vt100, not xterm. A remote SSH server's terminfo database is
-         * basically guaranteed complete and modern; this 1996-era local one apparently is not, for
-         * "xterm" specifically -- "vt100" is the safe baseline every Unix termcap has had correctly
-         * since the 1980s, and is what NeXT's own terminal app already relies on here.
+         * cursor-key handling, ncurses programs) had nothing sensible to look up.
+         *
+         * History: "xterm" was tried first and was wrong for OPENSTEP's own, much older, *termcap* database --
+         * arrow keys did nothing in the system's vi/emacs although the right \033[A-style bytes were being sent -- so
+         * TERM=vt100 (what NeXT's own Terminal.app uses) was the default for a long while.  vt100 has no colours,
+         * though, and ncurses programs (the openstep-pkg ncurses terminfo has a complete xterm entry) want xterm;
+         * the terminal now also implements what that entry uses (repeat-character, alternate screen, ...), so the
+         * default is "xterm".  If arrow keys misbehave in the system vi/emacs again, set the TerminalTERM default to vt100.
          *
          * putenv() itself turned out not to be a real, linkable symbol here -- the same class of
          * gap as setsid()/waitpid()/tcgetattr()/tcsetattr() (declared by the headers, genuinely
          * absent from the real libc). Rather than chase yet another libc convenience wrapper that
          * might not exist either, this reaches for the one thing under it that must: execl() (and
          * every exec variant except execve) builds the new process's environment straight from the
-         * current process's own `environ` global, so extending that array directly, by hand, gets
+         * current process's own `environ` global, so replacing that array directly, by hand, gets
          * $TERM there without needing any "set an env var" library call to exist at all. */
         {
             extern char **environ;
-            static char term_var[] = "TERM=vt100";
             static char *new_environ[64];
-            int i = 0;
-            while (environ[i] && i < 62) { new_environ[i] = environ[i]; i++; }
-            new_environ[i++] = term_var;
-            new_environ[i] = (char *)0;
+            int i = 0, k = 0;
+            while (environ[i] && k < 62) {
+                if (strncmp(environ[i], "TERM=", 5) != 0) new_environ[k++] = environ[i];        /* ours replaces any inherited one */
+                i++;
+            }
+            new_environ[k++] = termVar;
+            new_environ[k] = (char *)0;
             environ = new_environ;
         }
         shell = getenv("SHELL");
